@@ -1,0 +1,48 @@
+---
+- name: Kill zombie processes
+  hosts: localhost
+  become: yes
+  tasks:
+    
+    - name: Find zombie processes
+      ansible.builtin.shell: "ps aux | awk '{ if ($8 ~ /Z/) print $2 }'"
+      register: zombie_processes
+      changed_when: false
+      #zombie_processes.stdout != ""
+
+    - name: Terminate zombie processes if exist
+      block:
+        - name: Debug show zombie processes
+          debug:
+            msg: "{{ zombie_processes.stdout_lines }}"
+        
+        - name: Identify parent PIDs of zombie processes
+          ansible.builtin.shell: "ps aux | awk '{ if ($8 ~ /Z/) print $2 }' | xargs -I{} ps -o ppid= -p {}"
+          register: parent_pids
+          changed_when: false
+
+        - name: Debug Show parent PIDs
+          debug:
+            msg: "{{ parent_pids.stdout_lines }}"
+
+        - name: Terminate parent processes with SIGHUP
+          ansible.builtin.shell: kill {{ item }}
+          loop: "{{ parent_pids.stdout_lines }}"
+          register: terminated_parent_processes
+          #when: item is match("^\\d+$")
+          ignore_errors: yes
+
+        - name: Output message
+          debug:
+            msg: "{{ 'terminated processes are ' + terminated_parent_processes.stdout_lines }}" 
+
+      when: zombie_processes.stdout != ""
+
+
+    #- name: Kill zombie processes
+    #  ansible.builtin.shell: kill {{ item }}
+    #  loop: "{{ zombie_processes.stdout_lines }}"
+    #  when: zombie_processes.stdout != ""
+    #  changed_when: true
+
+
